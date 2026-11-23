@@ -1,0 +1,617 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+// Foundational System Configuration (Non-business)
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   
+  description String?  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+// Role Type Enum (Preserved for compatibility)
+
+// User / Admin Model
+model User {
+  id        String    @id @default(cuid())
+  name      String    
+  email     String    @unique 
+  password  String    
+  roleEnum  String? @map("role")
+  roleId    String?   @map("role_id")
+  role      Role?     @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  incomes      Income[]
+  expenses     Expense[]
+  billVouchers BillVoucher[]
+  requisitions Requisition[]
+  gatePasses   GatePass[]
+  taDaBills    TaDaBill[]
+  officeRents  OfficeRent[]
+  labIns       LabIn[]
+  labOuts      LabOut[]
+  employees    Employee[]
+  salaryRecords SalaryRecord[]
+
+  @@index([roleId])
+  @@map("users")
+}
+
+// Role Model
+model Role {
+  id              String           @id @default(cuid())
+  name            String           @unique 
+  description     String?          
+  isActive        Boolean          @default(true) @map("is_active")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+// Permission Model
+model Permission {
+  id              String           @id @default(cuid())
+  name            String           
+  key             String           @unique 
+  description     String?          
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+// Role-Permission Join Model
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+// Navigation Menu Model with Self-Referencing Hierarchy
+model NavigationMenu {
+  id                 String           @id @default(cuid())
+  title              String           
+  key                String           @unique 
+  path               String?          
+  icon               String           
+  parentId           String?          @map("parent_id")
+  sortOrder          Int              @default(0) @map("sort_order")
+  isActive           Boolean          @default(true) @map("is_active")
+  requiredPermission String?          @map("required_permission") 
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  parent             NavigationMenu?  @relation("MenuHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children           NavigationMenu[] @relation("MenuHierarchy")
+
+  @@index([parentId])
+  @@index([sortOrder])
+  @@map("navigation_menus")
+}
+
+// Payment Status Enum
+
+// Income Model (Management -> Income)
+model Income {
+  id                 String        @id @default(cuid())
+  date               DateTime      
+  companyOrStoreName String        @map("company_or_store_name") 
+  amount             Decimal       
+  status             String @default("PAID")
+  remarks            String?       
+  createdById        String?       @map("created_by_id")
+  createdBy          User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@index([status])
+  @@index([createdById])
+  @@map("incomes")
+}
+
+// Expense Model (Management -> Expense)
+model Expense {
+  id                 String        @id @default(cuid())
+  date               DateTime      
+  companyOrStoreName String        @map("company_or_store_name") 
+  amount             Decimal       
+  status             String @default("PAID")
+  category           String?       
+  remarks            String?       
+  createdById        String?       @map("created_by_id")
+  createdBy          User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@index([status])
+  @@index([category])
+  @@index([createdById])
+  @@map("expenses")
+}
+
+// Bill Voucher Enums
+
+// Bill Voucher Model (Customer -> Corporate / Non-Corporate -> Bill)
+model BillVoucher {
+  id                 String               @id @default(cuid())
+  voucherNo          String               @unique @map("voucher_no") 
+  date               DateTime             
+  customerType       String         @default("CORPORATE") @map("customer_type")
+  billType           String             @default("REPAIR") @map("bill_type")
+  customerName       String               @map("customer_name") 
+  mobile             String?              
+  address            String?              
+
+  // Machine Information
+  machineName        String?              @map("machine_name") 
+  brandModel         String?              @map("brand_model") 
+  serialNo           String?              @map("serial_no") 
+  department         String?              
+  problemComplaint   String?              @map("problem_complaint") 
+  receivedDate       DateTime?            @map("received_date") 
+
+  // Financial Totals
+  partsTotal         Decimal              @default(0) @map("parts_total") 
+  serviceCharge      Decimal              @default(0) @map("service_charge") 
+  discount           Decimal              @default(0) 
+  grandTotal         Decimal              @default(0) @map("grand_total") 
+  paidAmount         Decimal              @default(0) @map("paid_amount") 
+  dueAmount          Decimal              @default(0) @map("due_amount") 
+  amountInWords      String?              @map("amount_in_words") 
+  warrantyTerms      String?              @map("warranty_terms") 
+
+  // Payment Metadata
+  paymentStatus      String @default("DUE") @map("payment_status")
+  paymentMethod      String @default("CASH") @map("payment_method")
+  paymentMethodOther String?              @map("payment_method_other") 
+  preparedBy         String?              @map("prepared_by") 
+
+  // Items Relation
+  items              BillVoucherItem[]
+
+  createdById        String?              @map("created_by_id")
+  createdBy          User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  @@index([voucherNo])
+  @@index([customerType])
+  @@index([date])
+  @@index([paymentStatus])
+  @@index([createdById])
+  @@map("bill_vouchers")
+}
+
+// Bill Voucher Line Items
+model BillVoucherItem {
+  id          String      @id @default(cuid())
+  voucherId   String      @map("voucher_id")
+  voucher     BillVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  sl          Int         @default(1)
+  description String      
+  qty         Decimal     @default(1) 
+  unitPrice   Decimal     @default(0) @map("unit_price") 
+  amount      Decimal     @default(0) 
+  remarks     String?     
+
+  @@index([voucherId])
+  @@map("bill_voucher_items")
+}
+
+// Requisition / Repair Cost Estimate Models
+
+model Requisition {
+  id                   String                  @id @default(cuid())
+  estimateNo           String                  @unique @map("estimate_no") 
+  date                 DateTime                
+  validUpTo            DateTime?               @map("valid_up_to") 
+  customerType         String            @default("CORPORATE") @map("customer_type")
+  
+  // Customer Information
+  organizationName     String                  @map("organization_name") 
+  departmentWard       String?                 @map("department_ward") 
+  contactPerson        String?                 @map("contact_person") 
+  contactNo            String?                 @map("contact_no") 
+
+  // Equipment Details
+  equipmentName        String?                 @map("equipment_name") 
+  brand                String?                 
+  model                String?                 
+  serialNo             String?                 @map("serial_no") 
+
+  // Fault Description
+  faultDescription     String?                 @map("fault_description") 
+
+  // Financial Breakdown
+  sparePartsTotal      Decimal                 @default(0) @map("spare_parts_total") 
+  serviceLabourTotal   Decimal                 @default(0) @map("service_labour_total") 
+  subTotal             Decimal                 @default(0) @map("sub_total") 
+  discount             Decimal                 @default(0) 
+  grandTotal           Decimal                 @default(0) @map("grand_total") 
+
+  // Status & Signatures
+  status               String       @default("PENDING")
+  preparedBy           String?                 @default("1 Service & Repair Technology.") @map("prepared_by") 
+  clientApprovalNote   String?                 @map("client_approval_note") 
+
+  items                RequisitionItem[]
+
+  createdById          String?                 @map("created_by_id")
+  createdBy            User?                   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt            DateTime                @default(now()) @map("created_at")
+  updatedAt            DateTime                @updatedAt @map("updated_at")
+
+  @@index([estimateNo])
+  @@index([customerType])
+  @@index([date])
+  @@index([status])
+  @@index([createdById])
+  @@map("requisitions")
+}
+
+model RequisitionItem {
+  id            String                  @id @default(cuid())
+  requisitionId String                  @map("requisition_id")
+  requisition   Requisition             @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  category      String @default("SPARE_PARTS")
+  sl            Int                     @default(1)
+  description   String                  
+  qty           Decimal                 @default(1) 
+  unitPrice     Decimal                 @default(0) @map("unit_price") 
+  totalPrice    Decimal                 @default(0) @map("total_price") 
+  remarks       String?                 
+
+  @@index([requisitionId])
+  @@index([category])
+  @@map("requisition_items")
+}
+
+// Gate Pass Models
+
+model GatePass {
+  id                     String          @id @default(cuid())
+  passNo                 String          @unique @map("pass_no") 
+  date                   DateTime        
+  customerType           String    @default("CORPORATE") @map("customer_type")
+  passType               String    @default("RETURNABLE") @map("pass_type")
+  challanKind            String     @default("RECEIVING") @map("challan_kind")
+
+  // Common Header info
+  referenceWorkOrderNo   String?         @map("reference_work_order_no") 
+  gatePassCategory       String?         @map("gate_pass_category") 
+  
+  // Organization / Client info
+  organizationName       String          @map("organization_name") 
+  departmentWard         String?         @map("department_ward") 
+  address                String?         
+  contactPerson          String?         @map("contact_person") 
+  contactNo              String?         @map("contact_no") 
+  
+  // Machine Details (for Receiving Challan)
+  machineName            String?         @map("machine_name") 
+  quantity               Int             @default(1)
+  brandManufacturer      String?         @map("brand_manufacturer") 
+  modelNo                String?         @map("model_no") 
+  serialNo               String?         @map("serial_no") 
+  assetIdNo              String?         @map("asset_id_no") 
+  accessoriesReceived    String?         @map("accessories_received") 
+  machineCondition       String?         @map("machine_condition") 
+  reportedProblem        String?         @map("reported_problem") 
+  physicalDamageCondition String?        @map("physical_damage_condition") 
+
+  // Logistics & Movement
+  destination            String?         
+  vehicleNo              String?         @map("vehicle_no") 
+  carrierName            String?         @map("carrier_name") 
+  deliveredBy            String?         @map("delivered_by") 
+  designationStaffId     String?         @map("designation_staff_id") 
+  transportPurpose       String?         @map("transport_purpose") 
+  purpose                String?         
+  expectedReturnDate     DateTime?       @map("expected_return_date") 
+
+  // Return Specific Fields (for Return Challan)
+  returnDate             DateTime?       @map("return_date") 
+  serviceReportNo        String?         @map("service_report_no") 
+  returnCondition        String?         @map("return_condition") 
+  workDoneComments       String?         @map("work_done_comments") 
+  returnedAccessories    String?         @map("returned_accessories") 
+  pendingIssuesAdvice    String?         @map("pending_issues_advice") 
+
+  // Signatures & Status
+  status                 String  @default("PENDING")
+  preparedBy             String?         @default("1 Service & Repair Technology.") @map("prepared_by") 
+  authorizedBy           String?         @map("authorized_by") 
+  receivedBy             String?         @map("received_by") 
+
+  items                  GatePassItem[]
+
+  createdById            String?         @map("created_by_id")
+  createdBy              User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+
+  @@index([passNo])
+  @@index([customerType])
+  @@index([challanKind])
+  @@index([date])
+  @@index([status])
+  @@index([createdById])
+  @@map("gate_passes")
+}
+
+model GatePassItem {
+  id          String   @id @default(cuid())
+  gatePassId  String   @map("gate_pass_id")
+  gatePass    GatePass @relation(fields: [gatePassId], references: [id], onDelete: Cascade)
+  sl          Int      @default(1)
+  description String   
+  qty         Decimal  @default(1) 
+  serialNo    String?  @map("serial_no") 
+  remarks     String?  
+
+  @@index([gatePassId])
+  @@map("gate_pass_items")
+}
+
+// ==========================================
+// TA / DA MANAGEMENT (TRAVEL & DAILY ALLOWANCE)
+// ==========================================
+
+model TaDaBill {
+  id              String      @id @default(cuid())
+  billNo          String      @unique @map("bill_no") 
+  submissionDate  DateTime    @map("submission_date") 
+  employeeName    String      @map("employee_name") 
+  designation     String?     
+  employeeId      String?     @map("employee_id") 
+  department      String?     
+  totalAmount     Decimal     @default(0) @map("total_amount") 
+  status          String  @default("PENDING")
+
+  receivedBy      String?     @map("received_by") 
+  checkedBy       String?     @map("checked_by") 
+  approvedBy      String?     @map("approved_by") 
+  remarks         String?     
+
+  items           TaDaItem[]
+
+  createdById     String?     @map("created_by_id")
+  createdBy       User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@index([billNo])
+  @@index([submissionDate])
+  @@index([employeeName])
+  @@index([status])
+  @@index([createdById])
+  @@map("tada_bills")
+}
+
+model TaDaItem {
+  id          String    @id @default(cuid())
+  taDaBillId  String    @map("tada_bill_id")
+  taDaBill    TaDaBill  @relation(fields: [taDaBillId], references: [id], onDelete: Cascade)
+  sl          Int       @default(1)
+  date        DateTime? 
+  particular  String    
+  vehicleName String?   @map("vehicle_name") 
+  qty         Decimal   @default(1) 
+  unitTaka    Decimal   @default(0) @map("unit_taka") 
+  totalTaka   Decimal   @default(0) @map("total_taka") 
+  checkedBy   String?   @map("checked_by") 
+
+  @@index([taDaBillId])
+  @@map("tada_items")
+}
+
+// ==========================================
+// OFFICE RENT MODULE
+// ==========================================
+
+model OfficeRent {
+  id            String            @id @default(cuid())
+  month         String             // e.g., "June 2026"
+  title         String            @default("Office rent") 
+  amount        Decimal           
+  status        String @default("UNPAID")
+  paymentDate   DateTime?         @map("payment_date") 
+  paymentMethod String?           @map("payment_method")  // e.g. Cash, Bank Transfer, bKash
+  landlordName  String?           @map("landlord_name") 
+  receiptNo     String?           @map("receipt_no") 
+  note          String?           
+
+  createdById   String?           @map("created_by_id")
+  createdBy     User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@index([month])
+  @@index([status])
+  @@index([createdById])
+  @@map("office_rents")
+}
+
+// ==========================================
+// SERVICE MODULE: LAB IN & LAB OUT INVENTORY
+// ==========================================
+
+model LabPart {
+  id               String    @id @default(cuid())
+  name             String    @unique 
+  partNumber       String?   @map("part_number") 
+  unit             String    @default("pcs") 
+  unitPrice        Decimal   @default(0) @map("unit_price") 
+  stockQuantity    Decimal   @default(0) @map("stock_quantity") 
+  totalInQuantity  Decimal   @default(0) @map("total_in_quantity") 
+  totalOutQuantity Decimal   @default(0) @map("total_out_quantity") 
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  labIns           LabIn[]
+  labOuts          LabOut[]
+
+  @@index([name])
+  @@map("lab_parts")
+}
+
+model LabIn {
+  id          String    @id @default(cuid())
+  date        DateTime  
+  partId      String    @map("part_id")
+  part        LabPart   @relation(fields: [partId], references: [id], onDelete: Cascade)
+  partsName   String    @map("parts_name") 
+  quantity    Decimal   
+  unitPrice   Decimal   @map("unit_price") 
+  totalPrice  Decimal   @map("total_price") 
+  supplier    String?   
+  invoiceNo   String?   @map("invoice_no") 
+  remarks     String?   
+
+  createdById String?   @map("created_by_id")
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@index([partId])
+  @@index([partsName])
+  @@index([createdById])
+  @@map("lab_ins")
+}
+
+model LabOut {
+  id           String    @id @default(cuid())
+  date         DateTime  
+  partId       String    @map("part_id")
+  part         LabPart   @relation(fields: [partId], references: [id], onDelete: Cascade)
+  partsName    String    @map("parts_name") 
+  quantity     Decimal   
+  unitPrice    Decimal   @map("unit_price") 
+  totalPrice   Decimal   @map("total_price") 
+  dispatchedTo String?   @map("dispatched_to") 
+  referenceNo  String?   @map("reference_no") 
+  remarks      String?   
+
+  createdById  String?   @map("created_by_id")
+  createdBy    User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@index([partId])
+  @@index([partsName])
+  @@index([createdById])
+  @@map("lab_outs")
+}
+
+// ==========================================
+// EMPLOYEE MANAGEMENT MODULE
+// ==========================================
+
+model Employee {
+  id              String         @id @default(cuid())
+  employeeId      String         @unique @map("employee_id") 
+  name            String         
+  email           String         
+  phone           String?        
+  designation     String         
+  department      String         
+  basicSalary     Decimal        @map("basic_salary") 
+  allowance       Decimal        @default(0) @map("allowance")  // Mobile & other allowance
+  grossSalary     Decimal        @map("gross_salary")  // Basic + Allowance
+  joinDate        DateTime?      @map("join_date") 
+  status          String @default("ACTIVE")
+  address         String?        
+  notes           String?        
+
+  salaryRecords   SalaryRecord[]
+
+  createdById     String?        @map("created_by_id")
+  createdBy       User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@index([employeeId])
+  @@index([name])
+  @@index([email])
+  @@index([department])
+  @@index([status])
+  @@index([createdById])
+  @@map("employees")
+}
+
+// ==========================================
+// MANAGEMENT: SALARY & PAYROLL MODULE
+// ==========================================
+
+model SalaryRecord {
+  id                    String              @id @default(cuid())
+  month                 String               // e.g., "Jun 2026"
+  employeeIdRef         String?             @map("employee_id_ref")
+  employee              Employee?           @relation(fields: [employeeIdRef], references: [id], onDelete: SetNull)
+  employeeName          String              @map("employee_name") 
+  employeeCode          String              @map("employee_code")  // e.g. "7141"
+  designation           String              
+  department            String              
+  basicSalary           Decimal             @map("basic_salary") 
+  allowance             Decimal             @default(0) @map("allowance")  // Mobile & other allowance
+  totalDays             Int                 @default(30) @map("total_days")
+  presentDays           Int                 @default(30) @map("present_days")
+  absentDays            Int                 @default(0) @map("absent_days")
+  totalEarnings         Decimal             @map("total_earnings") 
+  advanceLoan           Decimal             @default(0) @map("advance_loan") 
+  previousDue           Decimal             @default(0) @map("previous_due") 
+  netPayable            Decimal             @map("net_payable") 
+  paidAmount            Decimal             @default(0) @map("paid_amount") 
+  dueAmount             Decimal             @default(0) @map("due_amount") 
+  paymentStatus         String @default("UNPAID") @map("payment_status")
+  paymentMethod         String?             @map("payment_method")  // Cash, Bank, Mobile/bKash
+  paymentDate           DateTime?           @map("payment_date") 
+  notes                 String?             
+
+  createdById           String?             @map("created_by_id")
+  createdBy             User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  @@index([month])
+  @@index([employeeCode])
+  @@index([employeeName])
+  @@index([department])
+  @@index([paymentStatus])
+  @@index([createdById])
+  @@map("salary_records")
+}
+
